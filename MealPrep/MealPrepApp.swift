@@ -9,6 +9,10 @@ import SwiftUI
 
 @main
 struct MealPrepApp: App {
+    init() {
+        PromoFonts.register()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
