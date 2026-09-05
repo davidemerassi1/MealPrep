@@ -15,7 +15,7 @@ struct MealPrepApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            AppRootView()
         }
     }
 }
