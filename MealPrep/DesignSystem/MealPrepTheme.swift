@@ -14,6 +14,9 @@ extension Color {
     static let mealPrepGreenHighlight = Color(red: 0.45, green: 0.85, blue: 0.50)
     static let mealPrepTrack = Color(red: 0.96, green: 0.95, blue: 0.97)
     static let mealPrepSecondaryText = Color(red: 0.43, green: 0.43, blue: 0.43)
+    static let mealPrepDisabledBackground = Color(red: 0.96, green: 0.95, blue: 0.97)
+    static let mealPrepDisabledText = Color(red: 0.79, green: 0.79, blue: 0.81)
+    static let mealPrepSelectionBackground = Color(red: 0.92, green: 0.98, blue: 0.92)
 }
 
 enum PromoFonts {

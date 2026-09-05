@@ -9,9 +9,9 @@ struct FlowProgressHeader: View {
         HStack(spacing: 9 * scale) {
             Button(action: onBack) {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 12 * scale, weight: .bold))
+                    .font(.system(size: 14 * scale, weight: .bold))
                     .foregroundStyle(.black.opacity(0.58))
-                    .frame(width: 24 * scale, height: 24 * scale)
+                    .frame(width: 32 * scale, height: 32 * scale)
                     .background(Color.mealPrepTrack, in: Circle())
             }
             .accessibilityLabel("Back")
@@ -34,9 +34,10 @@ struct FlowProgressHeader: View {
                                 .padding(.top, 2 * scale)
                         }
                 }
+                .animation(.easeInOut(duration: 0.26), value: progress)
             }
-            .frame(height: 12 * scale)
+            .frame(height: 18 * scale)
         }
-        .frame(height: 24 * scale)
+        .frame(height: 32 * scale)
     }
 }

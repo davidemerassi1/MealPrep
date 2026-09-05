@@ -11,6 +11,7 @@ struct RollingBudgetValue: View {
     private var hundreds: Int { value / 100 }
     private var tens: Int { (value / 10) % 10 }
     private var units: Int { value % 10 }
+    private var budgetFontSize: CGFloat { 90 * scale }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -24,12 +25,12 @@ struct RollingBudgetValue: View {
             RollingDigit(value: tens, transitionValue: value, scale: scale)
             RollingDigit(value: units, transitionValue: value, scale: scale)
         }
-        .font(.custom("Promo-Bold", size: 78 * scale))
+        .font(.custom("Promo-Bold", size: budgetFontSize))
         .foregroundStyle(.black)
         .overlay {
             if !reduceMotion {
                 GeometryReader { proxy in
-                    let shimmerWidth = 350 * scale
+                    let shimmerWidth = 404 * scale
 
                     Rectangle()
                         .fill(
@@ -48,7 +49,7 @@ struct RollingBudgetValue: View {
                             )
                         )
                         .frame(width: shimmerWidth, height: proxy.size.height + 16 * scale)
-                        .blur(radius: 3 * scale)
+                        .blur(radius: 3.45 * scale)
                         .offset(
                             x: -shimmerWidth + shimmerProgress * (proxy.size.width + shimmerWidth),
                             y: -8 * scale
@@ -56,7 +57,7 @@ struct RollingBudgetValue: View {
                 }
                 .mask {
                     shimmerMask
-                        .blur(radius: 1.25 * scale)
+                        .blur(radius: 1.45 * scale)
                 }
                 .allowsHitTesting(false)
             }
@@ -87,7 +88,7 @@ struct RollingBudgetValue: View {
             Text("\(units)")
                 .frame(minWidth: 39 * scale)
         }
-        .font(.custom("Promo-Bold", size: 78 * scale))
+        .font(.custom("Promo-Bold", size: budgetFontSize))
     }
 
     private func scheduleShimmer() {

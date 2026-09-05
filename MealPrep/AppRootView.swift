@@ -6,22 +6,28 @@ struct AppRootView: View {
     var body: some View {
         NavigationStack(path: $path) {
             LanderView {
-                path.append(.budget)
+                push(.mealSetup)
             }
             .navigationDestination(for: AppRoute.self) { route in
                 switch route {
-                case .budget:
-                    BudgetSelectionView()
+                case .mealSetup:
+                    MealSetupFlowView()
                 }
             }
         }
         .tint(.black)
         .preferredColorScheme(.light)
     }
+
+    private func push(_ route: AppRoute) {
+        withAnimation(.easeInOut(duration: 0.34)) {
+            path.append(route)
+        }
+    }
 }
 
 private enum AppRoute: Hashable {
-    case budget
+    case mealSetup
 }
 
 #Preview("MealPrep flow", traits: .fixedLayout(width: 375, height: 812)) {

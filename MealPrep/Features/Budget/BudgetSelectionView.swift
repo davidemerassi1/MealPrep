@@ -1,8 +1,7 @@
 import SwiftUI
 
-struct BudgetSelectionView: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var budget: Double = 80
+struct BudgetSelectionContent: View {
+    @Binding var budget: Double
 
     private let budgetRange = 25.0...150.0
     private var selectedBudget: Int {
@@ -13,23 +12,10 @@ struct BudgetSelectionView: View {
         GeometryReader { proxy in
             let scale = MealPrepTheme.scale(for: proxy.size.width)
 
-            ZStack {
-                Color.white.ignoresSafeArea()
-
-                VStack(spacing: 0) {
-                    FlowProgressHeader(progress: 0.25, scale: scale) {
-                        dismiss()
-                    }
-
-                    Text("What’s your budget?")
-                        .font(.custom("Promo-Bold", size: 27 * scale))
-                        .foregroundStyle(.black)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, 15 * scale)
-
-                    Spacer()
-                }
-                .padding(.horizontal, 20 * scale)
+            ZStack(alignment: .topLeading) {
+                Text("What’s your budget?")
+                    .font(.custom("Promo-Bold", size: 30 * scale))
+                    .foregroundStyle(.black)
 
                 VStack(spacing: 2 * scale) {
                     RollingBudgetValue(value: selectedBudget, scale: scale)
@@ -42,17 +28,10 @@ struct BudgetSelectionView: View {
                         .padding(.top, 48 * scale)
                 }
                 .offset(y: -8 * scale)
-                .padding(.horizontal, 24 * scale)
-
-                PrimaryButton(title: "Continue", scale: scale) {
-                    // Screen 03 will be connected when dietary needs is implemented.
-                }
-                .frame(maxHeight: .infinity, alignment: .bottom)
-                .padding(.horizontal, 20 * scale)
-                .padding(.bottom, 18 * scale)
+                .padding(.horizontal, 4 * scale)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .toolbar(.hidden, for: .navigationBar)
     }
 }
 
@@ -72,11 +51,11 @@ private struct BudgetSlider: View {
             ZStack(alignment: .leading) {
                 Capsule()
                     .fill(Color.mealPrepTrack)
-                    .frame(height: 14 * scale)
+                    .frame(height: 16 * scale)
 
                 Capsule()
                     .fill(Color.mealPrepGreen)
-                    .frame(width: fillWidth, height: 14 * scale)
+                    .frame(width: fillWidth, height: 16 * scale)
                     .overlay(alignment: .topLeading) {
                         Capsule()
                             .fill(Color.mealPrepGreenHighlight)
@@ -126,7 +105,6 @@ private struct BudgetSlider: View {
 }
 
 #Preview("Budget", traits: .fixedLayout(width: 375, height: 812)) {
-    NavigationStack {
-        BudgetSelectionView()
-    }
+    BudgetSelectionContent(budget: .constant(80))
+        .padding(20)
 }
