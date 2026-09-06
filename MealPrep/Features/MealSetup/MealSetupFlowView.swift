@@ -10,12 +10,43 @@ struct MealSetupFlowView: View {
     @State private var contentOpacity = 1.0
     @State private var contentOffset: CGFloat = 0
     @State private var isTransitioning = false
+    @State private var isGenerating = false
+    @State private var generatedPlan: WeeklyMealPlan?
+    @State private var generationError: String?
 
     var body: some View {
         GeometryReader { proxy in
             let scale = MealPrepTheme.scale(for: proxy.size.width)
 
-            VStack(spacing: 0) {
+            ZStack {
+                if isGenerating {
+                    MealPlanLoadingView(scale: scale)
+                        .transition(.opacity)
+                } else if let generatedPlan {
+                    WeeklyMealPlanView(plan: generatedPlan)
+                        .transition(.opacity)
+                } else if let generationError {
+                    MealPlanErrorView(
+                        message: generationError,
+                        scale: scale,
+                        onRetry: generateMealPlan,
+                        onBack: { self.generationError = nil }
+                    )
+                    .transition(.opacity)
+                } else {
+                    setupContent(proxy: proxy, scale: scale)
+                        .transition(.opacity)
+                }
+            }
+            .animation(.easeInOut(duration: 0.25), value: isGenerating)
+            .animation(.easeInOut(duration: 0.25), value: generatedPlan != nil)
+            .animation(.easeInOut(duration: 0.25), value: generationError != nil)
+        }
+        .toolbar(.hidden, for: .navigationBar)
+    }
+
+    private func setupContent(proxy: GeometryProxy, scale: CGFloat) -> some View {
+        VStack(spacing: 0) {
                 FlowProgressHeader(progress: displayedProgress, scale: scale, onBack: goBack)
                     .padding(.top, 20 * scale)
 
@@ -39,8 +70,6 @@ struct MealSetupFlowView: View {
             }
             .padding(.horizontal, 20 * scale)
             .background(Color.white.ignoresSafeArea())
-        }
-        .toolbar(.hidden, for: .navigationBar)
     }
 
     @ViewBuilder
@@ -64,11 +93,12 @@ struct MealSetupFlowView: View {
     }
 
     private func continueFlow() {
-        guard !isTransitioning, let next = step.next else {
-            // Screen 05 will be connected with the weekly meal plan.
-            return
+        guard !isTransitioning else { return }
+        if let next = step.next {
+            transition(to: next, forward: true)
+        } else {
+            generateMealPlan()
         }
-        transition(to: next, forward: true)
     }
 
     private func goBack() {
@@ -110,6 +140,30 @@ struct MealSetupFlowView: View {
 
             try? await Task.sleep(for: .milliseconds(180))
             isTransitioning = false
+        }
+    }
+
+    private func generateMealPlan() {
+        guard !isGenerating else { return }
+        isGenerating = true
+        generationError = nil
+        let configuration = MealPlanConfiguration(
+            weeklyBudget: Int((budget / 5).rounded() * 5),
+            dietaryNeeds: dietaryNeeds,
+            nutritionalGoals: nutritionalGoals
+        )
+
+        print("[MealPrep] Generating weekly meal plan...")
+        Task { @MainActor in
+            do {
+                let plan = try await MealPlanGenerator().generate(configuration: configuration)
+                MealPlanLogger.log(plan)
+                generatedPlan = plan
+            } catch {
+                MealPlanLogger.log(error: error)
+                generationError = error.localizedDescription
+            }
+            isGenerating = false
         }
     }
 }

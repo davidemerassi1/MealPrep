@@ -26,7 +26,7 @@ enum PromoFonts {
         guard !didRegister else { return }
         didRegister = true
 
-        ["Promo-Normal", "Promo-SemiBold", "Promo-Bold"].forEach { name in
+        ["Promo-Normal", "Promo-Regular", "Promo-Medium", "Promo-SemiBold", "Promo-Bold"].forEach { name in
             let url = Bundle.main.url(forResource: name, withExtension: "ttf", subdirectory: "Fonts")
                 ?? Bundle.main.url(forResource: name, withExtension: "ttf")
             guard let url else { return }
