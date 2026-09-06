@@ -17,6 +17,7 @@ struct WeeklyMealPlanView: View {
                         .font(.custom("Promo-Bold", size: 32 * scale))
                         .foregroundStyle(.white)
                         .padding(.top, 24 * scale)
+                        .padding(.horizontal, 20 * scale)
 
                     WeeklyCostCard(total: plan.weeklyTotalPrice, scale: scale)
                         .padding(.top, 15 * scale)
@@ -47,6 +48,20 @@ struct WeeklyMealPlanView: View {
                     .padding(.top, 16 * scale)
                     .padding(.bottom, 14 * scale)
                 }
+
+                NavigationLink {
+                    ShoppingListView(plan: plan)
+                } label: {
+                    Image(systemName: "cart.fill")
+                        .font(.system(size: 17 * scale, weight: .semibold))
+                        .foregroundStyle(.black)
+                        .frame(width: 42 * scale, height: 42 * scale)
+                        .background(.white, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Shopping list")
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .padding(.trailing, 12 * scale)
             }
         }
         .preferredColorScheme(.light)

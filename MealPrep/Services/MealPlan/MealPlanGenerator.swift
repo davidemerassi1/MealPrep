@@ -105,7 +105,8 @@ struct MealPlanGenerator {
 
     private static let instructions = """
     You are MealPrep's meal-planning engine. Build practical recipes using only the supplied
-    catalog products. Never invent product IDs, product names, package prices, or package sizes.
+    catalog products. Never invent product IDs, product names, brands, categories, package prices,
+    or package sizes. Copy brand and category exactly from the selected catalog product.
     Reuse purchased products across the week to minimize waste. Respect every dietary need and
     nutritional goal. The weekly shopping budget is a hard constraint and takes priority over
     the number of meals, variety, portion size, and minimizing waste. Prices are EUR. Return only
@@ -187,6 +188,8 @@ struct MealPlanGenerator {
                 "items": object([
                     "productId": ["type": "string"],
                     "name": ["type": "string"],
+                    "brand": ["type": "string"],
+                    "category": ["type": "string"],
                     "packages": ["type": "integer", "minimum": 1],
                     "packagePrice": ["type": "number", "minimum": 0],
                     "totalPrice": ["type": "number", "minimum": 0]
@@ -295,6 +298,8 @@ private enum MealPlanCatalogNormalizer {
             return ShoppingListItem(
                 productId: product.id,
                 name: product.name,
+                brand: product.brand,
+                category: product.category?.name ?? product.department.name,
                 packages: item.packages,
                 packagePrice: product.price.amount,
                 totalPrice: product.price.amount * Double(item.packages)
@@ -342,6 +347,8 @@ private enum MealPlanPackageNormalizer {
             return ShoppingListItem(
                 productId: product.id,
                 name: product.name,
+                brand: product.brand,
+                category: product.category?.name ?? product.department.name,
                 packages: packages,
                 packagePrice: product.price.amount,
                 totalPrice: roundedCurrency(totalPrice)

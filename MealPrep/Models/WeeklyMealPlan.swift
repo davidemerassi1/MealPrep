@@ -10,6 +10,8 @@ struct WeeklyMealPlan: Codable {
 struct ShoppingListItem: Codable {
     let productId: String
     let name: String
+    let brand: String
+    let category: String
     let packages: Int
     let packagePrice: Double
     let totalPrice: Double
