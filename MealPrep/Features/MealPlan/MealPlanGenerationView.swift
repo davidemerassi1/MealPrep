@@ -9,6 +9,7 @@ struct MealPlanGenerationView: View {
     @State private var pendingPlan: WeeklyMealPlan?
     @State private var generatedPlan: WeeklyMealPlan?
     @State private var generationError: String?
+    @State private var hasStartedGeneration = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -40,7 +41,11 @@ struct MealPlanGenerationView: View {
             .animation(.easeInOut(duration: 0.25), value: generationError != nil)
         }
         .toolbar(.hidden, for: .navigationBar)
-        .task { await generateMealPlan() }
+        .task {
+            guard !hasStartedGeneration else { return }
+            hasStartedGeneration = true
+            await generateMealPlan()
+        }
     }
 
     private func retry() {

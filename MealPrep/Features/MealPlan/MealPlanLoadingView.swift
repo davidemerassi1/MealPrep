@@ -121,7 +121,7 @@ struct MealPlanLoadingView: View {
                 bagScale = 1.28
                 showsReadyMessage = true
             }
-            try? await Task.sleep(for: .seconds(3))
+            try? await Task.sleep(for: .seconds(2))
             guard !Task.isCancelled else { return }
             onCompletionFinished()
         }
