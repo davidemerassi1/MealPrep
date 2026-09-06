@@ -10,39 +10,21 @@ struct MealSetupFlowView: View {
     @State private var contentOpacity = 1.0
     @State private var contentOffset: CGFloat = 0
     @State private var isTransitioning = false
-    @State private var isGenerating = false
-    @State private var generatedPlan: WeeklyMealPlan?
-    @State private var generationError: String?
+    @State private var generationConfiguration: MealPlanConfiguration?
+    @State private var showsMealPlanGeneration = false
 
     var body: some View {
         GeometryReader { proxy in
             let scale = MealPrepTheme.scale(for: proxy.size.width)
 
-            ZStack {
-                if isGenerating {
-                    MealPlanLoadingView(scale: scale)
-                        .transition(.opacity)
-                } else if let generatedPlan {
-                    WeeklyMealPlanView(plan: generatedPlan)
-                        .transition(.opacity)
-                } else if let generationError {
-                    MealPlanErrorView(
-                        message: generationError,
-                        scale: scale,
-                        onRetry: generateMealPlan,
-                        onBack: { self.generationError = nil }
-                    )
-                    .transition(.opacity)
-                } else {
-                    setupContent(proxy: proxy, scale: scale)
-                        .transition(.opacity)
-                }
-            }
-            .animation(.easeInOut(duration: 0.25), value: isGenerating)
-            .animation(.easeInOut(duration: 0.25), value: generatedPlan != nil)
-            .animation(.easeInOut(duration: 0.25), value: generationError != nil)
+            setupContent(proxy: proxy, scale: scale)
         }
         .toolbar(.hidden, for: .navigationBar)
+        .navigationDestination(isPresented: $showsMealPlanGeneration) {
+            if let generationConfiguration {
+                MealPlanGenerationView(configuration: generationConfiguration)
+            }
+        }
     }
 
     private func setupContent(proxy: GeometryProxy, scale: CGFloat) -> some View {
@@ -97,7 +79,7 @@ struct MealSetupFlowView: View {
         if let next = step.next {
             transition(to: next, forward: true)
         } else {
-            generateMealPlan()
+            openMealPlanGeneration()
         }
     }
 
@@ -143,28 +125,13 @@ struct MealSetupFlowView: View {
         }
     }
 
-    private func generateMealPlan() {
-        guard !isGenerating else { return }
-        isGenerating = true
-        generationError = nil
-        let configuration = MealPlanConfiguration(
+    private func openMealPlanGeneration() {
+        generationConfiguration = MealPlanConfiguration(
             weeklyBudget: Int((budget / 5).rounded() * 5),
             dietaryNeeds: dietaryNeeds,
             nutritionalGoals: nutritionalGoals
         )
-
-        print("[MealPrep] Generating weekly meal plan...")
-        Task { @MainActor in
-            do {
-                let plan = try await MealPlanGenerator().generate(configuration: configuration)
-                MealPlanLogger.log(plan)
-                generatedPlan = plan
-            } catch {
-                MealPlanLogger.log(error: error)
-                generationError = error.localizedDescription
-            }
-            isGenerating = false
-        }
+        showsMealPlanGeneration = true
     }
 }
 

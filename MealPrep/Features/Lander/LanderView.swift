@@ -65,17 +65,6 @@ struct LanderView: View {
             withAnimation(.linear(duration: 12).repeatForever(autoreverses: false)) {
                 foodOrbitRotation = 360
             }
-
-            try? await Task.sleep(for: .milliseconds(420))
-            let pulseOrder = [0, 3, 1, 5, 2, 6, 4]
-            while !Task.isCancelled {
-                for index in pulseOrder {
-                    guard !Task.isCancelled else { return }
-                    withAnimation(.linear(duration: 0.2)) { highlightedFoodIndex = index }
-                    try? await Task.sleep(for: .seconds(1.5))
-                    withAnimation(.linear(duration: 0.2)) { highlightedFoodIndex = nil }
-                }
-            }
         }
     }
 }
