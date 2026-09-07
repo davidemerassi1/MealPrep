@@ -80,6 +80,22 @@ struct OpenAIResponsesClient {
             )
         }
 
+        if let usage = payload.usage {
+            let input = usage.inputTokens ?? 0
+            let cached = usage.inputTokensDetails?.cachedTokens ?? 0
+            let cacheWrite = usage.inputTokensDetails?.cacheWriteTokens ?? 0
+            let output = usage.outputTokens ?? 0
+            let reasoning = usage.outputTokensDetails?.reasoningTokens ?? 0
+            let total = usage.totalTokens ?? (input + output)
+            print(
+                "[MealPrep][OpenAI] Tokens — input: \(input) "
+                    + "(cached: \(cached), cache write: \(cacheWrite)), "
+                    + "output: \(output) (reasoning: \(reasoning)), total: \(total)"
+            )
+        } else {
+            print("[MealPrep][OpenAI] Token usage unavailable for this response.")
+        }
+
         if payload.status == "incomplete" {
             throw MealPlanGenerationError.generationIncomplete(
                 reason: payload.incompleteDetails?.reason ?? "unknown reason",
@@ -125,10 +141,36 @@ private struct OpenAIResponse: Decodable {
     }
 
     struct Usage: Decodable {
+        struct InputTokensDetails: Decodable {
+            let cachedTokens: Int?
+            let cacheWriteTokens: Int?
+
+            private enum CodingKeys: String, CodingKey {
+                case cachedTokens = "cached_tokens"
+                case cacheWriteTokens = "cache_write_tokens"
+            }
+        }
+
+        struct OutputTokensDetails: Decodable {
+            let reasoningTokens: Int?
+
+            private enum CodingKeys: String, CodingKey {
+                case reasoningTokens = "reasoning_tokens"
+            }
+        }
+
+        let inputTokens: Int?
+        let inputTokensDetails: InputTokensDetails?
         let outputTokens: Int?
+        let outputTokensDetails: OutputTokensDetails?
+        let totalTokens: Int?
 
         private enum CodingKeys: String, CodingKey {
+            case inputTokens = "input_tokens"
+            case inputTokensDetails = "input_tokens_details"
             case outputTokens = "output_tokens"
+            case outputTokensDetails = "output_tokens_details"
+            case totalTokens = "total_tokens"
         }
     }
 

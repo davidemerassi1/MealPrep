@@ -21,7 +21,9 @@ struct MealPlanGenerator {
         guard !candidates.isEmpty else { throw MealPlanGenerationError.noMatchingProducts }
 
         let catalogJSON = try String(
-            decoding: JSONEncoder().encode(candidates.map(ProductPromptItem.init)),
+            decoding: JSONEncoder().encode(candidates.map {
+                ProductPromptItem($0, goals: configuration.nutritionalGoals)
+            }),
             as: UTF8.self
         )
         let basePrompt = Self.prompt(configuration: configuration, catalogJSON: catalogJSON)
@@ -66,17 +68,19 @@ struct MealPlanGenerator {
             input: input,
             schema: Self.schema
         )
-        let decodedPlan: WeeklyMealPlan
+        let generatedPlan: GeneratedMealPlan
         do {
-            decodedPlan = try JSONDecoder().decode(WeeklyMealPlan.self, from: planData)
+            generatedPlan = try JSONDecoder().decode(GeneratedMealPlan.self, from: planData)
         } catch let error as DecodingError {
             let responsePreview = String(decoding: planData.prefix(800), as: UTF8.self)
             throw MealPlanGenerationError.responseDecodingFailed(
                 "Meal plan: \(error.mealPrepDiagnosticDescription) Response prefix: \(responsePreview)"
             )
         }
-        let catalogNormalizedPlan = MealPlanCatalogNormalizer.normalize(decodedPlan, catalog: catalog)
-        let plan = MealPlanPackageNormalizer.normalize(catalogNormalizedPlan, catalog: catalog)
+        let plan = MealPlanPackageNormalizer.normalize(
+            generatedPlan.mealPlan(using: catalog),
+            catalog: catalog
+        )
         try MealPlanValidator.validate(plan, configuration: configuration, catalog: catalog)
         return plan
     }
@@ -105,12 +109,11 @@ struct MealPlanGenerator {
 
     private static let instructions = """
     You are MealPrep's meal-planning engine. Build practical recipes using only the supplied
-    catalog products. Never invent product IDs, product names, brands, categories, package prices,
-    or package sizes. Copy brand and category exactly from the selected catalog product.
+    catalog products. Never invent product IDs.
     Reuse purchased products across the week to minimize waste. Respect every dietary need and
     nutritional goal. The weekly shopping budget is a hard constraint and takes priority over
-    the number of meals, variety, portion size, and minimizing waste. Prices are EUR. Return only
-    data matching the provided JSON schema.
+    the number of meals, variety, portion size, and minimizing waste. Return only data matching
+    the provided JSON schema.
     """
 
     private static func prompt(
@@ -142,13 +145,13 @@ struct MealPlanGenerator {
         - Express each ingredient in a unit compatible with its catalog netContent: use g or kg
           for products sold by mass and ml or l for products sold by volume. Prefer the exact
           netContent unit. Eggs are the only exception and may be expressed as pieces.
-        - For each product, sum its ingredient amounts across every meal in the entire week.
-          Convert compatible units to the netContent unit, divide that total by netContent.value,
-          and round UP to obtain shoppingList.packages. For eggs only, treat one piece as 60 g
-          when the catalog netContent is expressed in grams.
-        - Set each shopping-list totalPrice to the exact catalog packagePrice multiplied by
-          packages. Set weeklyTotalPrice to the sum of all shopping-list totalPrice values.
-        - Recalculate the shopping list from scratch after composing all recipes. If the result
+        - For each product, sum its ingredient amounts across every meal in the entire week,
+          convert compatible units to its package unit, divide by its package amount, and round UP
+          to determine how many packages the app will charge. For eggs only, treat one piece as
+          60 g when the package is expressed in grams.
+        - Multiply each required package count by that product's catalog price p, sum those costs,
+          and return the result in w. Calculate w before finalizing the response.
+        - Recalculate whole-package spending after composing all recipes. If the result
           exceeds the weekly budget, reduce quantities, replace expensive products, or remove the
           least important optional meal, then recalculate again. Never exceed the weekly budget.
         - Aim to spend between 90% and 98% of the budget when practical. If the total is below 90%,
@@ -160,17 +163,41 @@ struct MealPlanGenerator {
         - Leftovers are acceptable. Reuse them where practical, but never increase spending merely
           to consume an entire package.
 
-        Set mealType to Breakfast, Lunch, or Dinner. Use course to describe the role of each dish.
-        Keep dishes belonging to the same mealType adjacent in the day's meals array and order the
-        meal types as Breakfast, Lunch, Dinner. Every recipe ingredient must reference a productId
-        in shoppingList. A meal's price is the
-        estimated cost of the ingredient quantities actually used, not the price of all packages.
+        Set meal type to Breakfast, Lunch, or Dinner. Use course to describe the actual role of
+        each dish, following these rules:
+        - Use Main dish only when an eating occasion has a single principal dish. There must never
+          be more than one Main dish within the same Breakfast, Lunch, or Dinner.
+        - When Lunch or Dinner contains multiple dishes, classify them by role instead of marking
+          them all as Main dish: pasta, rice, soup and similar opening dishes are First course;
+          meat, fish, eggs and other protein-centered dishes are Second course; vegetable-based
+          accompaniments are Side dish; sweet closing dishes are Dessert.
+        - Prefer a coherent First course + Second course + Side dish combination when the budget
+          supports three dishes in the same Lunch or Dinner. Use only the applicable roles when it
+          supports two dishes. Do not add artificial courses merely to fill every category.
+        Keep dishes belonging to the same meal type adjacent and order meal types as Breakfast,
+        Lunch, Dinner. Every ingredient must return both the exact catalog product ID and its exact
+        catalog name. The name is used only as a fallback if an ID is mistyped. The app derives
+        servings, shopping list, package counts and dish prices locally. Return your calculated
+        whole-package weekly total in w; the app will independently recalculate and verify it.
 
-        Keep recipe instructions concise and concrete. Do not add commentary outside the schema.
+        Write every recipe as 2 to 6 concise, concrete preparation steps. Each element of the
+        steps array must contain one distinct action; never combine the whole recipe into one
+        element or join multiple steps with semicolons. Do not add commentary outside the schema.
         Make the weekly menu varied: do not repeat the same dish on different days. Alternate
         recipes, main ingredients, cooking methods, and meal styles throughout the week. Reusing
         purchased products to reduce waste is encouraged, but each meal must remain recognizably
         different from the others.
+
+        Output key legend: root w=estimated whole-package weekly total in EUR and d=days;
+        day d=day and m=meals; meal t=meal type, c=course,
+        n=dish name, min=preparation minutes, i=ingredients and s=recipe steps; ingredient
+        id=product ID, n=exact catalog product name, a=amount and u=unit.
+
+        Compact catalog legend: i=id, n=name, c=category, v=package amount, u=package unit,
+        q=package description when structured content is unavailable, p=package price in EUR,
+        x=nutrition values relevant to the selected goals (pr=protein, su=sugars, fa=fat,
+        ca=carbohydrates, sa=salt; all per 100 g). All products below already satisfy the selected
+        dietary restrictions.
 
         Allowed catalog products:
         \(catalogJSON)
@@ -181,50 +208,35 @@ struct MealPlanGenerator {
         "type": "object",
         "additionalProperties": false,
         "properties": [
-            "currency": ["type": "string", "enum": ["EUR"]],
-            "weeklyTotalPrice": ["type": "number", "minimum": 0],
-            "shoppingList": [
-                "type": "array", "minItems": 1,
-                "items": object([
-                    "productId": ["type": "string"],
-                    "name": ["type": "string"],
-                    "brand": ["type": "string"],
-                    "category": ["type": "string"],
-                    "packages": ["type": "integer", "minimum": 1],
-                    "packagePrice": ["type": "number", "minimum": 0],
-                    "totalPrice": ["type": "number", "minimum": 0]
-                ])
-            ],
-            "days": [
+            "w": ["type": "number", "minimum": 0],
+            "d": [
                 "type": "array", "minItems": 7, "maxItems": 7,
                 "items": object([
-                    "day": [
+                    "d": [
                         "type": "string",
                         "enum": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
                     ],
-                    "meals": [
+                    "m": [
                         "type": "array", "minItems": 1,
                         "items": object([
-                            "mealType": ["type": "string", "enum": ["Breakfast", "Lunch", "Dinner"]],
-                            "course": [
+                            "t": ["type": "string", "enum": ["Breakfast", "Lunch", "Dinner"]],
+                            "c": [
                                 "type": "string",
                                 "enum": ["Main dish", "First course", "Second course", "Side dish", "Dessert"]
                             ],
-                            "name": ["type": "string"],
-                            "preparationMinutes": ["type": "integer", "minimum": 1],
-                            "servings": ["type": "integer", "enum": [1]],
-                            "price": ["type": "number", "minimum": 0],
-                            "ingredients": [
+                            "n": ["type": "string"],
+                            "min": ["type": "integer", "minimum": 1],
+                            "i": [
                                 "type": "array", "minItems": 1,
                                 "items": object([
-                                    "productId": ["type": "string"],
-                                    "name": ["type": "string"],
-                                    "amount": ["type": "number", "minimum": 0.001],
-                                    "unit": ["type": "string"]
+                                    "id": ["type": "string"],
+                                    "n": ["type": "string"],
+                                    "a": ["type": "number", "minimum": 0.001],
+                                    "u": ["type": "string"]
                                 ])
                             ],
-                            "steps": [
-                                "type": "array", "minItems": 1,
+                            "s": [
+                                "type": "array", "minItems": 2, "maxItems": 6,
                                 "items": ["type": "string"]
                             ]
                         ])
@@ -232,7 +244,7 @@ struct MealPlanGenerator {
                 ])
             ]
         ],
-        "required": ["currency", "weeklyTotalPrice", "shoppingList", "days"]
+        "required": ["d", "w"]
     ]
 
     private static func object(_ properties: [String: Any]) -> [String: Any] {
@@ -242,81 +254,6 @@ struct MealPlanGenerator {
             "properties": properties,
             "required": Array(properties.keys).sorted()
         ]
-    }
-}
-
-private enum MealPlanCatalogNormalizer {
-    static func normalize(
-        _ plan: WeeklyMealPlan,
-        catalog: [CatalogProduct]
-    ) -> WeeklyMealPlan {
-        let productsByID = Dictionary(uniqueKeysWithValues: catalog.map { ($0.id, $0) })
-        let productsByName = Dictionary(
-            grouping: catalog,
-            by: { normalizedName($0.name) }
-        )
-
-        func canonicalProduct(id: String, name: String) -> CatalogProduct? {
-            if let product = productsByID[id] { return product }
-            let matches = productsByName[normalizedName(name), default: []]
-            return matches.count == 1 ? matches[0] : nil
-        }
-
-        let days = plan.days.map { day in
-            MealPlanDay(
-                day: day.day,
-                meals: day.meals.map { meal in
-                    PlannedMeal(
-                        mealType: meal.mealType,
-                        course: meal.course,
-                        name: meal.name,
-                        preparationMinutes: meal.preparationMinutes,
-                        servings: meal.servings,
-                        price: meal.price,
-                        ingredients: meal.ingredients.map { ingredient in
-                            guard let product = canonicalProduct(
-                                id: ingredient.productId,
-                                name: ingredient.name
-                            ) else { return ingredient }
-                            return MealIngredient(
-                                productId: product.id,
-                                name: product.name,
-                                amount: ingredient.amount,
-                                unit: ingredient.unit
-                            )
-                        },
-                        steps: meal.steps
-                    )
-                }
-            )
-        }
-
-        let shoppingList = plan.shoppingList.map { item in
-            guard let product = canonicalProduct(id: item.productId, name: item.name) else {
-                return item
-            }
-            return ShoppingListItem(
-                productId: product.id,
-                name: product.name,
-                brand: product.brand,
-                category: product.category?.name ?? product.department.name,
-                packages: item.packages,
-                packagePrice: product.price.amount,
-                totalPrice: product.price.amount * Double(item.packages)
-            )
-        }
-
-        return WeeklyMealPlan(
-            currency: plan.currency,
-            weeklyTotalPrice: plan.weeklyTotalPrice,
-            shoppingList: shoppingList,
-            days: days
-        )
-    }
-
-    private static func normalizedName(_ name: String) -> String {
-        name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
@@ -432,27 +369,154 @@ private enum MealPlanPackageNormalizer {
     }
 }
 
+private struct GeneratedMealPlan: Decodable {
+    let weeklyTotalEstimate: Double
+    let days: [GeneratedDay]
+
+    private enum CodingKeys: String, CodingKey {
+        case weeklyTotalEstimate = "w"
+        case days = "d"
+    }
+
+    func mealPlan(using catalog: [CatalogProduct]) -> WeeklyMealPlan {
+        let productsByID = Dictionary(uniqueKeysWithValues: catalog.map { ($0.id, $0) })
+        let productsByName = Dictionary(grouping: catalog) { normalizedName($0.name) }
+
+        func product(for ingredient: GeneratedIngredient) -> CatalogProduct? {
+            if let product = productsByID[ingredient.productId] {
+                return product
+            }
+            let matches = productsByName[normalizedName(ingredient.name), default: []]
+            return matches.count == 1 ? matches[0] : nil
+        }
+
+        return WeeklyMealPlan(
+            currency: "EUR",
+            weeklyTotalPrice: 0,
+            shoppingList: [],
+            days: days.map { day in
+                MealPlanDay(
+                    day: day.day,
+                    meals: day.meals.map { meal in
+                        PlannedMeal(
+                            mealType: meal.mealType,
+                            course: meal.course,
+                            name: meal.name,
+                            preparationMinutes: meal.preparationMinutes,
+                            servings: 1,
+                            price: 0,
+                            ingredients: meal.ingredients.map { ingredient in
+                                let catalogProduct = product(for: ingredient)
+                                return MealIngredient(
+                                    productId: catalogProduct?.id ?? ingredient.productId,
+                                    name: catalogProduct?.name ?? ingredient.name,
+                                    amount: ingredient.amount,
+                                    unit: ingredient.unit
+                                )
+                            },
+                            steps: meal.steps
+                        )
+                    }
+                )
+            }
+        )
+    }
+
+    private func normalizedName(_ name: String) -> String {
+        name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+private struct GeneratedDay: Decodable {
+    let day: String
+    let meals: [GeneratedMeal]
+
+    private enum CodingKeys: String, CodingKey {
+        case day = "d"
+        case meals = "m"
+    }
+}
+
+private struct GeneratedMeal: Decodable {
+    let mealType: String
+    let course: String
+    let name: String
+    let preparationMinutes: Int
+    let ingredients: [GeneratedIngredient]
+    let steps: [String]
+
+    private enum CodingKeys: String, CodingKey {
+        case mealType = "t"
+        case course = "c"
+        case name = "n"
+        case preparationMinutes = "min"
+        case ingredients = "i"
+        case steps = "s"
+    }
+}
+
+private struct GeneratedIngredient: Decodable {
+    let productId: String
+    let name: String
+    let amount: Double
+    let unit: String
+
+    private enum CodingKeys: String, CodingKey {
+        case productId = "id"
+        case name = "n"
+        case amount = "a"
+        case unit = "u"
+    }
+}
+
 private struct ProductPromptItem: Encodable {
     let id: String
     let name: String
     let category: String
-    let quantity: String
-    let netContent: CatalogProduct.NetContent?
+    let packageAmount: Double?
+    let packageUnit: String?
+    let packageDescription: String?
     let packagePrice: Double
-    let nutrition: CatalogProduct.Nutrition
-    let labels: [String]
-    let allergens: [String]
+    let goalNutrition: [String: Double]?
 
-    init(_ product: CatalogProduct) {
+    private enum CodingKeys: String, CodingKey {
+        case id = "i"
+        case name = "n"
+        case category = "c"
+        case packageAmount = "v"
+        case packageUnit = "u"
+        case packageDescription = "q"
+        case packagePrice = "p"
+        case goalNutrition = "x"
+    }
+
+    init(_ product: CatalogProduct, goals: Set<NutritionalGoal>) {
         id = product.id
         name = product.name
         category = product.category?.name ?? product.department.name
-        quantity = product.quantity ?? "Not specified"
-        netContent = product.netContent
+        packageAmount = product.netContent?.value
+        packageUnit = product.netContent?.unit
+        packageDescription = product.netContent == nil ? product.quantity : nil
         packagePrice = product.price.amount
-        nutrition = product.nutrition
-        labels = product.labels.map(\.name)
-        allergens = product.allergens.map(\.name)
+
+        var nutrition: [String: Double] = [:]
+        if goals.contains(.highProtein), let value = product.nutrition.proteins100g {
+            nutrition["pr"] = value
+        }
+        if goals.contains(.lowSugar), let value = product.nutrition.sugars100g {
+            nutrition["su"] = value
+        }
+        if goals.contains(.lowFat), let value = product.nutrition.fat100g {
+            nutrition["fa"] = value
+        }
+        if goals.contains(.lowCarbs), let value = product.nutrition.carbohydrates100g {
+            nutrition["ca"] = value
+        }
+        if goals.contains(.lowSalt), let value = product.nutrition.salt100g {
+            nutrition["sa"] = value
+        }
+        goalNutrition = nutrition.isEmpty ? nil : nutrition
     }
 }
 
@@ -490,7 +554,10 @@ private enum MealPlanValidator {
 
         guard verifiedTotal <= Double(configuration.weeklyBudget) + 0.01,
               abs(verifiedTotal - plan.weeklyTotalPrice) < 0.05 else {
-            throw MealPlanGenerationError.invalidPlan("The verified shopping total does not respect the weekly budget.")
+            throw MealPlanGenerationError.invalidPlan(
+                "The locally verified shopping total is EUR \(String(format: "%.2f", verifiedTotal)), "
+                    + "which exceeds the EUR \(configuration.weeklyBudget) weekly budget."
+            )
         }
 
         let ingredients = plan.days.flatMap(\.meals).flatMap(\.ingredients)
